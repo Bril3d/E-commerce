@@ -43,8 +43,7 @@ export default function Home() {
       const { data: products, error: productsError } = await supabase
         .from('products')
         .select(`
-          *,
-          category:categories(name, slug)
+          *
         `)
         .eq('is_featured', true)
         .limit(6);
@@ -100,7 +99,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 px-4">
             {featuredProducts.map((product) => (
               <Card key={product.id}>
                 <CardHeader>
@@ -149,7 +148,7 @@ export default function Home() {
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {categories.map((category) => (
-              <Link key={category.id} href={`/category/${category.slug}`}>
+              <Link key={category.id} href={`/products?category=${category.id}`}>
                 <Card className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="aspect-square relative">
