@@ -107,7 +107,7 @@ export default function ProductPage() {
 
   if (loading) {
     return (
-      <div className="container py-8">
+      <div className="container py-8 px-20">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="animate-pulse">
             <div className="aspect-square bg-muted rounded-lg" />

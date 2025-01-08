@@ -87,7 +87,7 @@ export default function CategoryPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 px-20">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
         {/* Filters Sidebar */}
         <Card className="h-fit">

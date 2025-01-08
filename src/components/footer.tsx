@@ -50,7 +50,7 @@ export function Footer() {
   }
 
   return (
-    <footer className="border-t bg-background">
+    <footer className="border-t bg-background px-20">
       <div className="container py-8 md:py-12">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Company Info */}

@@ -46,6 +46,7 @@ type Address = Database['public']['Tables']['addresses']['Row'];
 export default function AccountPage() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  console.log(user);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
