@@ -1,138 +1,314 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Elements } from '@stripe/react-stripe-js';
-import { useCart } from '@/contexts/cart-context';
-import { useAuth } from '@/contexts/auth-context';
+import { Check, CreditCard, MapPin, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { stripePromise } from '@/lib/stripe';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
+import { useCart } from '@/contexts/cart-context';
+import { supabase, handleError } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
+
+type Address = Database['public']['Tables']['addresses']['Row'];
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, total, clearCart } = useCart();
+  const { toast } = useToast();
   const { user } = useAuth();
+  const { items, total, clearCart } = useCart();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>('card');
 
-  if (!user) {
-    router.push('/signin?redirect=/checkout');
-    return null;
-  }
+  useEffect(() => {
+    if (!user) {
+      router.push('/signin');
+      return;
+    }
 
-  if (items.length === 0) {
-    router.push('/');
-    return null;
-  }
+    if (items.length === 0) {
+      router.push('/cart');
+      return;
+    }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
+    fetchAddresses();
+  }, [user, items.length, router]);
+
+  const fetchAddresses = async () => {
+    if (!user) return;
 
     try {
-      // Create a checkout session
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          items: items.map(item => ({
-            id: item.id,
-            quantity: item.quantity,
-          })),
-        }),
-      });
+      const data = await handleError(
+        supabase
+          .from('addresses')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('is_default', { ascending: false })
+      );
 
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
+      setAddresses(data || []);
+      if (data && data.length > 0) {
+        const defaultAddress = data.find((addr) => addr.is_default) || data[0];
+        setSelectedAddress(defaultAddress.id);
+      }
+    } catch (error) {
+      console.error('Error fetching addresses:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to load addresses',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!user || !selectedAddress) return;
+
+    try {
+      setLoading(true);
+
+      // Create order
+      const orderData = await handleError(
+        supabase
+          .from('orders')
+          .insert({
+            user_id: user.id,
+            status: 'pending',
+            total_amount: total,
+            shipping_address_id: selectedAddress,
+            payment_method: paymentMethod,
+          })
+          .select()
+          .single()
+      );
+
+      if (!orderData) {
+        throw new Error('Failed to create order');
       }
 
-      const { sessionId } = await response.json();
+      // Create order items
+      const orderItems = items.map((item) => ({
+        order_id: orderData.id,
+        product_id: item.id,
+        quantity: item.quantity,
+        unit_price: item.price,
+      }));
 
-      // Redirect to Stripe Checkout
-      const stripe = await stripePromise;
-      const { error: stripeError } = await stripe!.redirectToCheckout({
-        sessionId,
-      });
+      await handleError(
+        supabase.from('order_items').insert(orderItems)
+      );
 
-      if (stripeError) {
-        throw stripeError;
+      // Update product stock
+      for (const item of items) {
+        await handleError(
+          supabase
+            .from('products')
+            .update({
+              stock_quantity: supabase.raw('stock_quantity - ?', [item.quantity]),
+            })
+            .eq('id', item.id)
+        );
       }
-    } catch (err) {
-      console.error('Checkout error:', err);
-      setError('Something went wrong. Please try again.');
+
+      // Clear cart and redirect to order confirmation
+      clearCart();
+      router.push(`/orders/${orderData.id}`);
+
+      toast({
+        title: 'Order Placed',
+        description: 'Your order has been placed successfully!',
+      });
+    } catch (error) {
+      console.error('Error placing order:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to place order',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 py-12">
-      <div className="container mx-auto px-4">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">Checkout</h1>
+  if (!user || items.length === 0) {
+    return null;
+  }
 
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Order Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Order Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="divide-y">
+  return (
+    <div className="container py-8">
+      <h1 className="text-3xl font-bold mb-8">Checkout</h1>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          {/* Shipping Address */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <MapPin className="h-5 w-5 mr-2" />
+                Shipping Address
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {addresses.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-muted-foreground mb-4">
+                    No shipping addresses found
+                  </p>
+                  <Button onClick={() => router.push('/account?tab=addresses')}>
+                    Add Address
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={selectedAddress}
+                  onValueChange={setSelectedAddress}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an address" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {addresses.map((address) => (
+                      <SelectItem key={address.id} value={address.id}>
+                        <div>
+                          <div className="font-medium">{address.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {address.address}, {address.city}, {address.country}{' '}
+                            {address.postal_code}
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Payment Method */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <CreditCard className="h-5 w-5 mr-2" />
+                Payment Method
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                <Button
+                  variant={paymentMethod === 'card' ? 'default' : 'outline'}
+                  className="h-auto py-4"
+                  onClick={() => setPaymentMethod('card')}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center">
+                      <CreditCard className="h-5 w-5 mr-2" />
+                      Credit Card
+                    </div>
+                    {paymentMethod === 'card' && (
+                      <Check className="h-5 w-5" />
+                    )}
+                  </div>
+                </Button>
+                <Button
+                  variant={paymentMethod === 'cash' ? 'default' : 'outline'}
+                  className="h-auto py-4"
+                  onClick={() => setPaymentMethod('cash')}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center">
+                      <Truck className="h-5 w-5 mr-2" />
+                      Cash on Delivery
+                    </div>
+                    {paymentMethod === 'cash' && (
+                      <Check className="h-5 w-5" />
+                    )}
+                  </div>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Order Summary */}
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Order Summary</CardTitle>
+              <CardDescription>
+                {items.length} {items.length === 1 ? 'item' : 'items'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
                 {items.map((item) => (
-                  <div key={item.id} className="py-4 flex gap-4">
-                    <div className="w-20 h-20 relative">
-                      <img
-                        src={item.image_url}
-                        alt={item.name}
-                        className="object-cover rounded"
-                      />
-                    </div>
+                  <div key={item.id} className="flex justify-between">
                     <div className="flex-1">
-                      <h4 className="font-medium">{item.name}</h4>
-                      <div className="text-sm text-gray-500">
-                        Quantity: {item.quantity}
-                      </div>
-                      <div className="font-medium">
-                        ${(item.price * item.quantity).toFixed(2)}
-                      </div>
+                      <p className="font-medium">
+                        {item.name} × {item.quantity}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        ${item.price.toFixed(2)} each
+                      </p>
                     </div>
+                    <p className="font-medium">
+                      ${(item.price * item.quantity).toFixed(2)}
+                    </p>
                   </div>
                 ))}
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <span className="font-bold">Total</span>
-                <span className="font-bold">${total.toFixed(2)}</span>
-              </CardFooter>
-            </Card>
-
-            {/* Payment Form */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit}>
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-4">
-                      {error}
-                    </div>
-                  )}
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={loading}
-                  >
-                    {loading ? 'Processing...' : 'Pay Now'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
+                <Separator />
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span className="font-medium">${total.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Shipping</span>
+                  <span className="text-muted-foreground">Free</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span>${total.toFixed(2)}</span>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handlePlaceOrder}
+                disabled={loading || !selectedAddress}
+              >
+                {loading ? 'Processing...' : 'Place Order'}
+              </Button>
+            </CardFooter>
+          </Card>
         </div>
       </div>
     </div>
