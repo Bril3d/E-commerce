@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           setUser(session.user);
           // Create or update profile
-          const { error: profileError } = await supabase
+          await supabase
             .from('profiles')
             .upsert(
               {
@@ -36,10 +36,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               },
               { onConflict: 'id' }
             );
-          
-          if (profileError) {
-            console.error('Error updating profile:', profileError);
-          }
         } else {
           setUser(null);
         }
@@ -49,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session?.user) {
               setUser(session.user);
               // Create or update profile on auth state change
-              const { error: profileError } = await supabase
+              await supabase
                 .from('profiles')
                 .upsert(
                   {
@@ -58,10 +54,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   },
                   { onConflict: 'id' }
                 );
-              
-              if (profileError) {
-                console.error('Error updating profile:', profileError);
-              }
               router.refresh();
             } else {
               setUser(null);

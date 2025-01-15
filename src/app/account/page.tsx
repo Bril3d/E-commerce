@@ -6,12 +6,8 @@ import { format } from 'date-fns';
 import {
   Package,
   User,
-  MapPin,
-  CreditCard,
-  Bell,
-  LogOut,
-  ShoppingBag,
-  Settings,
+  MapPin, LogOut,
+  ShoppingBag
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,20 +62,19 @@ export default function AccountPage() {
   }, [user, router]);
 
   const fetchUserData = async () => {
+    console.log(user)
     if (!user) return;
 
     try {
       setLoading(true);
 
       // Fetch profile
-      const profileData = await handleError(
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-      );
-
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
       if (profileData) {
         setProfile({
           full_name: profileData.full_name || '',
@@ -88,43 +83,43 @@ export default function AccountPage() {
       }
 
       // Fetch orders with items and products
-      const ordersData = await handleError(
-        supabase
-          .from('orders')
-          .select(`
-            *,
-            order_items (
-              quantity,
-              unit_price,
-              product:products (
-                name,
-                image_url
-              )
+      const { data: ordersData } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          order_items (
+            quantity,
+            unit_price,
+            product:products (
+              name,
+              image_url
             )
-          `)
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-      );
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
       setOrders(ordersData || []);
 
       // Fetch addresses
-      const addressesData = await handleError(
-        supabase
-          .from('addresses')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('is_default', { ascending: false })
-      );
+      const { data: addressesData } = await supabase
+        .from('addresses')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('is_default', { ascending: false });
 
       setAddresses(addressesData || []);
+
     } catch (error) {
       console.error('Error fetching user data:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to load your account data',
-        variant: 'destructive',
-      });
+      // Only show error toast if it's a real error
+      if (error instanceof Error && error.message) {
+        toast({
+          title: 'Error',
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -140,16 +135,14 @@ export default function AccountPage() {
         throw new Error('Name is required');
       }
 
-      await handleError(
-        supabase
-          .from('profiles')
-          .upsert({
-            id: user.id,
-            full_name: full_name.trim(),
-            phone: phone?.trim() || null,
-            updated_at: new Date().toISOString(),
-          })
-      );
+      await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          full_name: full_name.trim(),
+          phone: phone?.trim() || null,
+          updated_at: new Date().toISOString(),
+        });
 
       await fetchUserData();
       
@@ -158,12 +151,14 @@ export default function AccountPage() {
         description: 'Your profile has been updated successfully',
       });
     } catch (error) {
-      console.error('Error updating profile:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update your profile',
-        variant: 'destructive',
-      });
+      // Only show error toast if it's a validation error or has a message
+      if (error instanceof Error && error.message && error.message !== '{}') {
+        toast({
+          title: 'Error',
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
     }
   };
 
