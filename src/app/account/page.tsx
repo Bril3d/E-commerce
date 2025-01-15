@@ -23,8 +23,9 @@ import {
 } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
-import { supabase, handleError } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import type { Database } from '@/types/supabase';
+import { AddressForm } from '../addresses/address-form';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 type Order = Database['public']['Tables']['orders']['Row'] & {
@@ -51,6 +52,7 @@ export default function AccountPage() {
     full_name: '',
     phone: '',
   });
+  const [addressDialogOpen, setAddressDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -168,23 +170,19 @@ export default function AccountPage() {
     try {
       // If this is the first address or marked as default, unset other default addresses
       if (address.is_default || addresses.length === 0) {
-        await handleError(
-          supabase
-            .from('addresses')
-            .update({ is_default: false })
-            .eq('user_id', user.id)
-        );
+        await supabase
+          .from('addresses')
+          .update({ is_default: false })
+          .eq('user_id', user.id);
       }
 
-      await handleError(
-        supabase
-          .from('addresses')
-          .insert({
-            ...address,
-            user_id: user.id,
-            is_default: address.is_default || addresses.length === 0,
-          })
-      );
+      await supabase
+        .from('addresses')
+        .insert({
+          ...address,
+          user_id: user.id,
+          is_default: address.is_default || addresses.length === 0,
+        });
 
       await fetchUserData();
       
@@ -194,11 +192,14 @@ export default function AccountPage() {
       });
     } catch (error) {
       console.error('Error adding address:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to add address',
-        variant: 'destructive',
-      });
+      // Only show error toast if it has a meaningful message
+      if (error instanceof Error && error.message && error.message !== '{}') {
+        toast({
+          title: 'Error',
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -206,13 +207,11 @@ export default function AccountPage() {
     if (!user) return;
 
     try {
-      await handleError(
-        supabase
-          .from('addresses')
-          .delete()
-          .eq('id', addressId)
-          .eq('user_id', user.id)
-      );
+      await supabase
+        .from('addresses')
+        .delete()
+        .eq('id', addressId)
+        .eq('user_id', user.id);
 
       await fetchUserData();
       
@@ -222,11 +221,14 @@ export default function AccountPage() {
       });
     } catch (error) {
       console.error('Error deleting address:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to delete address',
-        variant: 'destructive',
-      });
+      // Only show error toast if it has a meaningful message
+      if (error instanceof Error && error.message && error.message !== '{}') {
+        toast({
+          title: 'Error',
+          description: error.message,
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -394,11 +396,16 @@ export default function AccountPage() {
 
         <TabsContent value="addresses">
           <Card>
-            <CardHeader>
-              <CardTitle>Shipping Addresses</CardTitle>
-              <CardDescription>
-                Manage your shipping addresses
-              </CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Shipping Addresses</CardTitle>
+                <CardDescription>
+                  Manage your shipping addresses
+                </CardDescription>
+              </div>
+              <Button onClick={() => setAddressDialogOpen(true)}>
+                Add Address
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {loading ? (
@@ -448,6 +455,11 @@ export default function AccountPage() {
               )}
             </CardContent>
           </Card>
+          <AddressForm
+            open={addressDialogOpen}
+            onOpenChange={setAddressDialogOpen}
+            onSubmit={handleAddAddress}
+          />
         </TabsContent>
       </Tabs>
     </div>

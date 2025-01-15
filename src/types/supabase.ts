@@ -97,6 +97,7 @@ export interface Database {
           tracking_number: string | null
           estimated_delivery: string | null
           created_at: string
+          payment_method: 'card' | 'cash'
         }
         Insert: {
           id?: string
@@ -107,6 +108,7 @@ export interface Database {
           tracking_number?: string | null
           estimated_delivery?: string | null
           created_at?: string
+          payment_method?: 'card' | 'cash'
         }
         Update: {
           id?: string
@@ -117,6 +119,7 @@ export interface Database {
           tracking_number?: string | null
           estimated_delivery?: string | null
           created_at?: string
+          payment_method?: 'card' | 'cash'
         }
       }
       order_items: {

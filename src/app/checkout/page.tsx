@@ -5,37 +5,30 @@ import { useRouter } from 'next/navigation';
 import { Check, CreditCard, MapPin, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
 } from '@/components/ui/card';
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import { useCart } from '@/contexts/cart-context';
-import { supabase, handleError } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import type { Database } from '@/types/supabase';
 
 type Address = Database['public']['Tables']['addresses']['Row'];
+type OrderData = Database['public']['Tables']['orders']['Row'];
+type OrderItem = Database['public']['Tables']['order_items']['Row'];
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -65,17 +58,15 @@ export default function CheckoutPage() {
     if (!user) return;
 
     try {
-      const data = await handleError(
-        supabase
-          .from('addresses')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('is_default', { ascending: false })
-      );
+      const { data } = await supabase
+        .from('addresses')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('is_default', { ascending: false });
 
       setAddresses(data || []);
       if (data && data.length > 0) {
-        const defaultAddress = data.find((addr) => addr.is_default) || data[0];
+        const defaultAddress = data.find((addr: Address) => addr.is_default) || data[0];
         setSelectedAddress(defaultAddress.id);
       }
     } catch (error) {
@@ -95,22 +86,20 @@ export default function CheckoutPage() {
       setLoading(true);
 
       // Create order
-      const orderData = await handleError(
-        supabase
-          .from('orders')
-          .insert({
-            user_id: user.id,
-            status: 'pending',
-            total_amount: total,
-            shipping_address_id: selectedAddress,
-            payment_method: paymentMethod,
-          })
-          .select()
-          .single()
-      );
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          user_id: user.id,
+          status: 'pending',
+          total_amount: total,
+          shipping_address_id: selectedAddress,
+          payment_method: paymentMethod,
+        })
+        .select()
+        .single();
 
-      if (!orderData) {
-        throw new Error('Failed to create order');
+      if (orderError || !orderData) {
+        throw new Error(orderError?.message || 'Failed to create order');
       }
 
       // Create order items
@@ -121,20 +110,29 @@ export default function CheckoutPage() {
         unit_price: item.price,
       }));
 
-      await handleError(
-        supabase.from('order_items').insert(orderItems)
-      );
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) {
+        throw new Error(itemsError.message);
+      }
 
       // Update product stock
       for (const item of items) {
-        await handleError(
-          supabase
-            .from('products')
-            .update({
-              stock_quantity: supabase.raw('stock_quantity - ?', [item.quantity]),
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({
+            stock_quantity: supabase.rpc('decrement_stock', {
+              p_id: item.id,
+              amount: item.quantity
             })
-            .eq('id', item.id)
-        );
+          })
+          .eq('id', item.id);
+
+        if (stockError) {
+          throw new Error(stockError.message);
+        }
       }
 
       // Clear cart and redirect to order confirmation
