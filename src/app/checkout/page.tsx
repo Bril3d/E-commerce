@@ -5,19 +5,19 @@ import { useRouter } from 'next/navigation';
 import { Check, CreditCard, MapPin, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
 } from '@/components/ui/card';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
@@ -25,6 +25,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useCart } from '@/contexts/cart-context';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/types/supabase';
+import { emailService } from '@/lib/email';
 
 type Address = Database['public']['Tables']['addresses']['Row'];
 type OrderData = Database['public']['Tables']['orders']['Row'];
@@ -134,6 +135,18 @@ export default function CheckoutPage() {
           throw new Error(stockError.message);
         }
       }
+
+      // Send order confirmation email
+      await emailService.sendOrderConfirmation(
+        user.email,
+        orderData.id,
+        {
+          items,
+          total,
+          shipping_address_id: selectedAddress,
+          payment_method: paymentMethod
+        }
+      );
 
       // Clear cart and redirect to order confirmation
       clearCart();

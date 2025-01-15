@@ -16,6 +16,8 @@ export interface Database {
           phone: string | null
           created_at: string
           updated_at: string
+          email: string | null
+          role: 'admin' | 'customer'
         }
         Insert: {
           id: string
@@ -23,6 +25,8 @@ export interface Database {
           phone?: string | null
           created_at?: string
           updated_at?: string
+          email?: string | null
+          role?: 'admin' | 'customer'
         }
         Update: {
           id?: string
@@ -30,6 +34,8 @@ export interface Database {
           phone?: string | null
           created_at?: string
           updated_at?: string
+          email?: string | null
+          role?: 'admin' | 'customer'
         }
       }
       products: {

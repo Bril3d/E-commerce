@@ -9,10 +9,9 @@ import {
   XCircle,
   AlertCircle,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/lib/supabase';
-import { sendOrderStatusEmail } from '@/lib/email';
+import { emailService } from '@/lib/email';
 
 interface Order {
   id: string;
@@ -73,10 +72,17 @@ export default function OrdersPage() {
   async function fetchOrders() {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select(`
           *,
+          shipping_address:addresses(
+            name,
+            address,
+            city,
+            country,
+            postal_code
+          ),
           items:order_items(
             id,
             product_id,
@@ -86,16 +92,13 @@ export default function OrdersPage() {
               name,
               image_url
             )
-          ),
-          user:users(
-            email,
-            user_metadata
           )
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setOrders(data || []);
+      if (ordersError) throw ordersError;
+
+      setOrders(ordersData || []);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
@@ -112,13 +115,25 @@ export default function OrdersPage() {
 
       if (error) throw error;
 
-      // Send order status update email
-      await sendOrderStatusEmail({
-        orderNumber: order.id,
-        customerName: order.user.user_metadata.full_name || 'Valued Customer',
-        customerEmail: order.user.email,
-        status,
-      });
+      // Get user data from auth.users instead of the users table
+      const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(order.user_id);
+
+      if (userError) {
+        console.error('Error fetching user:', userError);
+        // Continue with order update even if we can't send the email
+        await fetchOrders();
+        return;
+      }
+
+      // Send order status update email if we have user data
+      if (user) {
+        await emailService.sendOrderStatus({
+          orderNumber: order.id,
+          customerName: user.user_metadata?.full_name || 'Valued Customer',
+          customerEmail: user.email || '',
+          status,
+        });
+      }
 
       await fetchOrders();
     } catch (error) {

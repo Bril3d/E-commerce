@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Resend } from 'resend';
 import { supabase } from '@/lib/supabase';
+import {resend} from "../../../lib/resend"
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// const resend = new Resend(process.env.RESEND_API_KEY);
 
 const subscribeSchema = z.object({
   email: z.string().email('Invalid email address'),
